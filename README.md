@@ -117,3 +117,97 @@ INNER JOIN Customers ON Orders.CustomerID = Customers.CustomerID
 WHERE OrderDate BETWEEN '01/01/1997' AND '12/31/1997'
 GROUP BY Customers.CompanyName 
 ```
+
+
+
+**Procedimentos armazenados**:
+
+1. Dado um país (country) passado como parâmetro para uma stored procedure, retorne uma tabela que tenha os campos nomes dos clientes (Customers.CompanyName), nomes dos vendedores (Employees.FirstName, Employees.LastName) e o número e a data do pedido (Order.OrderID, Order.OrderDate) para todos os pedidos que tanto, o vendedor, quanto o cliente, quanto os fornecedores dos produtos do pedido sejam todos do país recebido como parâmetro. OBS: o pedido deverá ser desconsiderado se tiver pelo menos 1 produto de um fornecedor que não seja do país desejado.
+
+```sql
+CREATE PROC questao1
+@country varchar(30) AS
+SELECT c.CompanyName, e.FirstName, e.LastName, o.OrderID, o.OrderDate 
+FROM Orders o 
+JOIN Customers c ON c.CustomerID = o.CustomerID 
+JOIN Employees e ON e.EmployeeID = o.EmployeeID
+JOIN [Order Details] od ON od.OrderID = o.OrderID 
+JOIN Products p ON p.ProductID = od.ProductID 
+JOIN Suppliers s ON s.SupplierID = p.SupplierID
+WHERE o.ShipCountry = @country AND c.Country = @country AND e.Country = @country AND s.Country = @country
+
+EXEC questao1 'USA'
+```
+
+2. Crie uma stored procedure que retorne uma tabela que mostre os três produtos mais vendidos de cada categoria (Categories.CategoryID, Categories.CategoryName), ordenando por Products.CategoryID e Products.ProductName. Considere o somatório do campo quantidade ([Order Details].quantity)  para verificar os produtos mais vendidos. OBS: não é permitida a utilização de cursores.
+
+```sql
+CREATE PROC questao2 AS
+SELECT * FROM (
+SELECT SUM(od.ProductID * od.Quantity) AS teste, p.ProductID, p.ProductName, c.CategoryName,
+ROW_NUMBER() OVER (PARTITION BY c.CategoryName 
+ORDER BY SUM(od.ProductID * od.Quantity) DESC, c.CategoryName) AS consulta1
+FROM [Order Details] od 
+JOIN Products p ON p.ProductID = od.ProductID 
+JOIN Categories c ON c.CategoryID = p.CategoryID 
+GROUP BY p.ProductID, p.ProductName, c.CategoryName
+) consulta 
+WHERE consulta1 <=3
+
+EXEC questao2 
+```
+
+
+
+**Gatilhos**:
+
+1. Crie uma trigger que impeça a inserção de um novo pedido se tanto o cliente (Customers), quanto o vendedor (Employees) forem da mesma cidade e já tiverem realizados mais de 10 pedidos no último mês.
+
+```sql
+CREATE TRIGGER questao3 
+ON Orders 
+FOR INSERT AS
+IF (SELECT COUNT(*) FROM INSERTED Orders 
+JOIN Customers c ON c.CustomerID = Orders.CustomerID 
+WHERE MONTH(Orders.OrderDate) = MONTH(GETDATE()) 
+AND YEAR(Orders.OrderDate) = YEAR(GETDATE())) > 10 
+AND (SELECT COUNT(*) FROM INSERTED Orders
+JOIN Customers c2 ON c2.CustomerID = Orders.CustomerID
+JOIN Employees e2 ON e2.EmployeeID = Orders.EmployeeID
+WHERE c2.City = e2.City) > 0
+BEGIN 
+	PRINT 'Mais de 10 preços unitários'
+	ROLLBACK TRANSACTION 
+END
+ELSE IF (SELECT COUNT(*) FROM INSERTED Orders 
+JOIN Employees e ON e.EmployeeID = Orders.EmployeeID  
+WHERE MONTH(Orders.OrderDate) = MONTH(GETDATE()) 
+AND YEAR(Orders.OrderDate) = YEAR(GETDATE())) > 10
+AND (SELECT COUNT(*) FROM INSERTED Orders
+JOIN Customers c2 ON c2.CustomerID = Orders.CustomerID
+JOIN Employees e2 ON e2.EmployeeID = Orders.EmployeeID
+WHERE c2.City = e2.City) > 0
+BEGIN 
+	PRINT 'Mais de 10 preços unitários'
+	ROLLBACK TRANSACTION 
+END
+
+EXEC questao3
+```
+
+2. Crie uma trigger na tabela Products para INSERT e UPDATE que garanta que  existam no máximo 10 preços unitários (Products.UnitPrice) diferentes para fornecedores Paraguaios.
+
+```sql
+CREATE TRIGGER questao4
+ON Products 
+FOR INSERT, UPDATE AS
+IF (SELECT COUNT(DISTINCT p.UnitPrice) FROM Products p 
+  JOIN Suppliers s ON s.SupplierID = p.SupplierID 
+  WHERE s.Country = 'Paraguay') > 10
+BEGIN 
+	PRINT 'Mais de 10 preços unitários'
+	ROLLBACK TRANSACTION 
+END
+
+EXEC questao4
+```
