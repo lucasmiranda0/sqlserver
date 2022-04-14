@@ -1,1 +1,1 @@
-# Consultas, Procedimentos Armazenados e Gatilhos feitos com SQL
+# Consultas, Procedimentos Armazenados e Gatilhos feitos no SQLServer
